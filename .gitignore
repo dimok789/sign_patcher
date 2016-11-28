@@ -1,0 +1,14 @@
+/arm_kernel/*.bin
+/arm_kernel/*.elf
+/arm_kernel/arm_kernel_bin.h
+/arm_kernel/*.map
+/arm_kernel/build
+/arm_user/*.bin
+/arm_user/*.elf
+/arm_user/arm_user_bin.h
+/arm_user/*.map
+/*.elf
+/build
+/payload/*.h
+/payload
+/arm_user/build
