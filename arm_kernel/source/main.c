@@ -26,21 +26,6 @@ static const char repairData_usb_root_thread[] = {
 	0xE5,0x9F,0x0E,0x68,0xEB,0x00,0xB3,0x20,
 };
 
-/* from smealum's iosuhax: must be placed at 0x05059938 */
-static const char os_launch_hook[] = {
-	0x47, 0x78, 0x00, 0x00, 0xe9, 0x2d, 0x40, 0x0f, 0xe2, 0x4d, 0xd0, 0x08, 0xeb,
-	0xff, 0xfd, 0xfd, 0xe3, 0xa0, 0x00, 0x00, 0xeb, 0xff, 0xfe, 0x03, 0xe5, 0x9f,
-	0x10, 0x4c, 0xe5, 0x9f, 0x20, 0x4c, 0xe3, 0xa0, 0x30, 0x00, 0xe5, 0x8d, 0x30,
-	0x00, 0xe5, 0x8d, 0x30, 0x04, 0xeb, 0xff, 0xfe, 0xf1, 0xe2, 0x8d, 0xd0, 0x08,
-	0xe8, 0xbd, 0x80, 0x0f, 0x2f, 0x64, 0x65, 0x76, 0x2f, 0x73, 0x64, 0x63, 0x61,
-	0x72, 0x64, 0x30, 0x31, 0x00, 0x2f, 0x76, 0x6f, 0x6c, 0x2f, 0x73, 0x64, 0x63,
-	0x61, 0x72, 0x64, 0x00, 0x00, 0x00, 0x2f, 0x76, 0x6f, 0x6c, 0x2f, 0x73, 0x64,
-	0x63, 0x61, 0x72, 0x64, 0x00, 0x05, 0x11, 0x60, 0x00, 0x05, 0x0b, 0xe0, 0x00,
-	0x05, 0x0b, 0xcf, 0xfc, 0x05, 0x05, 0x99, 0x70, 0x05, 0x05, 0x99, 0x7e,
-};
-
-static const char sd_path[] = "/vol/sdcard";
-
 static unsigned int __attribute__((noinline)) disable_mmu(void)
 {
 	unsigned int control_register = 0;
@@ -53,6 +38,11 @@ static void __attribute__((noinline)) restore_mmu(unsigned int control_register)
 {
 	asm volatile("MCR p15, 0, %0, c1, c0, 0" : : "r" (control_register));
 }
+
+#define crypto_phys(addr) ((u32)(addr) - 0x04000000 + 0x08280000)
+#define mcp_phys(addr) ((u32)(addr) - 0x05000000 + 0x081C0000)
+#define mcp_rodata_phys(addr) ((u32)(addr) - 0x05060000 + 0x08220000)
+#define acp_phys(addr) ((u32)(addr) - 0xE0000000 + 0x12900000)
 
 int _main()
 {
@@ -87,53 +77,47 @@ int _main()
 	void * pUserBinSource = (void*)0x00148000;
 	void * pUserBinDest = (void*)0x101312D0;
 	kernel_memcpy(pUserBinDest, (void*)pUserBinSource, sizeof(arm_user_bin));
-/*
-	u32 i;
-	for (i = 0; i < 32; i++)
-		if (i < 11)
-			((char*)(0x050663B4 - 0x05000000 + 0x081C0000))[i] = sd_path[i];
-		else
-			((char*)(0x050663B4 - 0x05000000 + 0x081C0000))[i] = (char)0;
-*/
 
     // fix 10 minute timeout that crashes MCP after 10 minutes of booting
-	*(volatile u32*)(0x05022474 - 0x05000000 + 0x081C0000) = 0xFFFFFFFF;        // NEW_TIMEOUT
+	*(volatile u32*)mcp_phys(0x05022474) = 0xFFFFFFFF;        // NEW_TIMEOUT
 
     // patch cached cert check
-	*(volatile u32*)(0x05054D6C - 0x05000000 + 0x081C0000) = 0xE3A00000;    // mov r0, 0
-	*(volatile u32*)(0x05054D70 - 0x05000000 + 0x081C0000) = 0xE12FFF1E;    // bx lr
+	*(volatile u32*)mcp_phys(0x05054D6C) = 0xE3A00000;    // mov r0, 0
+	*(volatile u32*)mcp_phys(0x05054D70) = 0xE12FFF1E;    // bx lr
 
     // patch cert verification
-	*(volatile u32*)(0x05052A90 - 0x05000000 + 0x081C0000) = 0xe3a00000;    // mov r0, #0
-    *(volatile u32*)(0x05052A94 - 0x05000000 + 0x081C0000) = 0xe12fff1e;    // bx lr
+	*(volatile u32*)mcp_phys(0x05052A90) = 0xe3a00000;    // mov r0, #0
+    *(volatile u32*)mcp_phys(0x05052A94) = 0xe12fff1e;    // bx lr
 
     // patch MCP authentication check
-    *(volatile u32*)(0x05014CAC - 0x05000000 + 0x081C0000) = 0x20004770; // mov r0, #0; bx lr
+    *(volatile u32*)mcp_phys(0x05014CAC) = 0x20004770; // mov r0, #0; bx lr
 
     // patch IOSC_VerifyPubkeySign to always succeed
-	*(volatile u32*)(0x05052C44 - 0x05000000 + 0x081C0000) = 0xE3A00000; // mov r0, #0
-	*(volatile u32*)(0x05052C48 - 0x05000000 + 0x081C0000) = 0xE12FFF1E; // bx lr
+	*(volatile u32*)mcp_phys(0x05052C44) = 0xE3A00000; // mov r0, #0
+	*(volatile u32*)mcp_phys(0x05052C48) = 0xE12FFF1E; // bx lr
 
     // patch OS launch sig check
-	*(volatile u32*)(0x0500A818 - 0x05000000 + 0x081C0000) = 0x20002000; // mov r0, #0; mov r0, #0
+	*(volatile u32*)mcp_phys(0x0500A818) = 0x20002000; // mov r0, #0; mov r0, #0
+
+	// move filename argument to new position in full path
+	*(volatile u32*)mcp_phys(0x050089B4) = 0x95029600; // str r6, [sp, #0]
+
+	// change dynamically generated title path to wii vc title path
+    *(volatile u32*)mcp_phys(0x05008A54) = 0x05062038; // /%s/code/%s
+    *(volatile u32*)mcp_phys(0x05008A58) = 0x05074A18; // wii vc path
 
     // allow custom bootLogoTex and bootMovie.h264
-	*(volatile u32*)(0xE0030D68 - 0xE0000000 + 0x12900000) = 0xE3A00000; // mov r0, #0
-	*(volatile u32*)(0xE0030D34 - 0xE0000000 + 0x12900000) = 0xE3A00000; // mov r0, #0
+	*(volatile u32*)acp_phys(0xE0030D68) = 0xE3A00000; // mov r0, #0
+	*(volatile u32*)acp_phys(0xE0030D34) = 0xE3A00000; // mov r0, #0
     // allow any region title launch
-	*(volatile u32*)(0xE0030498 - 0xE0000000 + 0x12900000) = 0xE3A00000; // mov r0, #0
+	*(volatile u32*)acp_phys(0xE0030498) = 0xE3A00000; // mov r0, #0
 
     // nop out memcmp hash checks
-	*(volatile u32*)(0x040017E0 - 0x04000000 + 0x08280000) = 0xE3A00000; // mov r0, #0
-	*(volatile u32*)(0x040019C4 - 0x04000000 + 0x08280000) = 0xE3A00000; // mov r0, #0
-	*(volatile u32*)(0x04001BB0 - 0x04000000 + 0x08280000) = 0xE3A00000; // mov r0, #0
-	*(volatile u32*)(0x04001D40 - 0x04000000 + 0x08280000) = 0xE3A00000; // mov r0, #0
-/*
-	*(volatile u32*)(0x050282AE - 0x05000000 + 0x081C0000) = 0xF031FB43; // bl launch_os_hook
+	*(volatile u32*)crypto_phys(0x040017E0) = 0xE3A00000; // mov r0, #0
+	*(volatile u32*)crypto_phys(0x040019C4) = 0xE3A00000; // mov r0, #0
+	*(volatile u32*)crypto_phys(0x04001BB0) = 0xE3A00000; // mov r0, #0
+	*(volatile u32*)crypto_phys(0x04001D40) = 0xE3A00000; // mov r0, #0
 
-	for (i = 0; i < sizeof(os_launch_hook); i++)
-		((volatile u8*)(0x05059938 - 0x05000000 + 0x081C0000))[i] = os_launch_hook[i];
-*/
 	*(volatile u32*)(0x1555500) = 0;
 
 	/* REENABLE MMU */
@@ -143,8 +127,6 @@ int _main()
 	invalidate_icache();
 
 	enable_interrupts(level);
-
-    //shutdown(1);
 
 	return 0;
 }
