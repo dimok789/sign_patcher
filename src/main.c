@@ -314,7 +314,8 @@ int Menu_Main(void)
     // in case we are not in mii maker but in system menu we start the installation
     if (currenTitleId != 0x000500101004A200 && // mii maker eur
         currenTitleId != 0x000500101004A100 && // mii maker usa
-        currenTitleId != 0x000500101004A000)   // mii maker jpn
+        currenTitleId != 0x000500101004A000 && // mii maker jpn
+        currenTitleId != 0x0005000013374842)   // HBL channel
     {
         return EXIT_RELAUNCH_ON_LOAD;
     }
